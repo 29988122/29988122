@@ -5,3 +5,6 @@ apk/
 work/
 *.apk
 *.xapk
+
+# EFF apkeep 執行檔(可從 GitHub releases 取得)
+tools/apkeep
