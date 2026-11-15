@@ -1,0 +1,7 @@
+# 下載的工具二進位(可從 GitHub releases 取得,不入庫)
+tools/*.jar
+# APK 與反編譯產物(個人/版權,勿散佈)
+apk/
+work/
+*.apk
+*.xapk
