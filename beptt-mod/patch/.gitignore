@@ -1,0 +1,5 @@
+__pycache__/
+*.class
+*.jar
+*.p12
+*.jks
