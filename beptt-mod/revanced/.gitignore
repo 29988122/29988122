@@ -1,0 +1,8 @@
+work/
+__pycache__/
+*.rvp
+*.jar
+*.keystore
+*.p12
+*.jks
+local-config.json
