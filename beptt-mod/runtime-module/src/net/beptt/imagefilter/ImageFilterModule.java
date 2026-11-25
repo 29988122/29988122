@@ -2,6 +2,7 @@ package net.beptt.imagefilter;
 
 import android.content.SharedPreferences;
 import android.util.Log;
+import android.os.Build;
 import io.github.libxposed.api.XposedModule;
 import java.io.File;
 import java.lang.reflect.Field;
@@ -62,9 +63,9 @@ public final class ImageFilterModule extends XposedModule {
         HookHandle converterHook = hook(converter).setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
             Object result = chain.proceed();
             Line line = active.get();
-            if (line == null || !(result instanceof List<?>) || !calledDirectlyByParser(site)) return result;
-            if (++line.calls != 2) return result;
+            if (line == null || !(result instanceof List<?>)) return result;
             try {
+                if (!calledDirectlyByParser(site, parser, converter) || ++line.calls != 2) return result;
                 List<?> images = (List<?>) result;
                 ArrayList<Object> kept = new ArrayList<>(images.size());
                 for (Object image : images) {
@@ -75,7 +76,7 @@ public final class ImageFilterModule extends XposedModule {
                 if (kept.size() == images.size()) return result;
                 if (reportedFilter.compareAndSet(false, true)) log(Log.INFO, TAG, "Image preview filter active");
                 return kept;
-            } catch (RuntimeException invalidRule) {
+            } catch (RuntimeException | LinkageError invalidRule) {
                 return result;
             }
         });
@@ -111,7 +112,30 @@ public final class ImageFilterModule extends XposedModule {
         log(Log.INFO, TAG, "Image parser fingerprint matched; module ready");
     }
 
-    private static boolean calledDirectlyByParser(Fingerprint.Site site) {
+    private static boolean calledDirectlyByParser(Fingerprint.Site site, Method parserMethod, Method converterMethod) {
+        if (Build.VERSION.SDK_INT >= 34) return ModernStack.isDirectCaller(parserMethod, converterMethod);
+        return legacyCallerCheck(site);
+    }
+
+    private static final class ModernStack {
+        private static final StackWalker WALKER = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
+        static boolean isDirectCaller(Method parser, Method converter) {
+            ClassLoader appLoader = parser.getDeclaringClass().getClassLoader();
+            return WALKER.walk(frames -> frames
+                    .filter(frame -> frame.getDeclaringClass().getClassLoader() == appLoader)
+                    .filter(frame -> frame.getDeclaringClass() != converter.getDeclaringClass()
+                            || !converter.getName().equals(frame.getMethodName()))
+                    .findFirst()
+                    .map(frame -> frame.getDeclaringClass() == parser.getDeclaringClass()
+                            && parser.getName().equals(frame.getMethodName())
+                            && parser.getReturnType() == frame.getMethodType().returnType()
+                            && java.util.Arrays.equals(parser.getParameterTypes(), frame.getMethodType().parameterArray()))
+                    .orElse(false));
+        }
+    }
+
+    private static boolean legacyCallerCheck(Fingerprint.Site site) {
         String parser = Fingerprint.className(site.parser.getDefiningClass());
         String converter = Fingerprint.className(site.converter.getDefiningClass());
         for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
